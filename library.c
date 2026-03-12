@@ -565,7 +565,7 @@ library_clone(struct library *retp, struct library *lib)
 #if defined(HAVE_LIBDW)
 	/* Wipe DWFL_MODULE, leave it to proc_add_library to
 	 * initialize.  */
-	lib->dwfl_module = NULL;
+	retp->dwfl_module = NULL;
 #endif
 
 	return 0;
