@@ -459,10 +459,9 @@ parse_colon_separated_list(const char *paths, struct vect *vec,
 
 	/* It's undesirable to use strtok, because we want the string
 	 * "a::b" to have three elements.  */
-	char *tok = clone - 1;
+	char *tok = clone;
 	char *end = clone + strlen(clone);
-	while (tok < end) {
-		++tok;
+	while (true) {
 		size_t len = strcspn(tok, ":");
 		tok[len] = 0;
 
@@ -476,7 +475,9 @@ parse_colon_separated_list(const char *paths, struct vect *vec,
 			fprintf(stderr, "Couldn't store component of %s: %s.\n",
 				paths, strerror(errno));
 
-		tok += len;
+		if (tok + len >= end)
+			break;
+		tok += len + 1;
 	}
 
 	return 0;
