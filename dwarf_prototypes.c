@@ -42,7 +42,7 @@
 static struct arg_type_info *get_type(int *newly_allocated_info,
 				      Dwarf_Die *type_die,
 				      struct protolib *plib,
-				      struct dict *type_dieoffset_hash);
+				      struct dict *type_die_hash);
 
 
 
@@ -285,20 +285,45 @@ static bool get_type_die(Dwarf_Die *type_die, Dwarf_Die *die)
 
 
 
-// type_dieoffset_hash dictionary callbacks
+// Note: we assume here that the Dwarf_CU pointers themselves are stable.
+// This is not an explicitly documented feature of the library,
+// but it currently appears that they are stable and alive for the lifetime of the owning Dwarf,
+// themselves kept stable and alive within the lifetime of the owning Dwfl,
+// and we only keep the dict alive within the lifetime of a Dwfl,
+// meaning on the current implementation of libdwfl this cannot conflict.
+// Other consumers of libdwfl also appear to make the same assumption,
+// so we're in the same boat as many others,
+// so it seems at least hopefully unlikely to change anytime soon
+struct dwarf_die_dict_key {
+	Dwarf_CU *compile_unit;
+	Dwarf_Off die_offset;
+};
+
+// type_die_hash dictionary callbacks
 static size_t dwarf_die_hash(const void *x)
 {
-	return *(const Dwarf_Off*)x;
+	const struct dwarf_die_dict_key *key = x;
+	return ((uintptr_t)key->compile_unit << 8) ^ key->die_offset;
 }
+
 static int dwarf_die_eq(const void *a, const void *b)
 {
-	return *(const Dwarf_Off*)a == *(const Dwarf_Off*)b;
+	const struct dwarf_die_dict_key *key_a = a;
+	const struct dwarf_die_dict_key *key_b = b;
+	return
+		(key_a->compile_unit == key_b->compile_unit) &&
+		(key_a->die_offset == key_b->die_offset);
+}
+
+static struct dwarf_die_dict_key dwarf_die_make_key(Dwarf_Die *die)
+{
+	return (struct dwarf_die_dict_key){ .compile_unit = die->cu, .die_offset = dwarf_cuoffset(die) };
 }
 
 
 // returns a newly-allocated art_type_info*, or NULL on error
 static struct arg_type_info *get_enum(Dwarf_Die *parent,
-				      struct dict *type_dieoffset_hash)
+				      struct dict *type_die_hash)
 {
 
 #define CLEANUP_AND_RETURN_ERROR(ret) do {				\
@@ -313,9 +338,9 @@ static struct arg_type_info *get_enum(Dwarf_Die *parent,
 			type_destroy(result);				\
 			free(result);					\
 		}							\
-		dict_erase (type_dieoffset_hash, &die_offset, NULL,	\
+		dict_erase (type_die_hash, &die_dict_key, NULL,		\
 			    NULL, NULL);				\
-		dict_insert(type_dieoffset_hash, &die_offset,		\
+		dict_insert(type_die_hash, &die_dict_key,		\
 			    &(struct arg_type_info*){			\
 				    type_get_simple(ARGTYPE_VOID)});	\
 		return ret;						\
@@ -326,7 +351,7 @@ static struct arg_type_info *get_enum(Dwarf_Die *parent,
 	const char *dupkey = NULL;
 	struct value *value = NULL;
 
-	Dwarf_Off die_offset = dwarf_dieoffset(parent);
+	struct dwarf_die_dict_key die_dict_key = dwarf_die_make_key(parent);
 
 	result = calloc(1, sizeof(struct arg_type_info));
 	if (result == NULL) {
@@ -334,7 +359,7 @@ static struct arg_type_info *get_enum(Dwarf_Die *parent,
 		CLEANUP_AND_RETURN_ERROR(NULL);
 	}
 
-	if (dict_insert(type_dieoffset_hash, &die_offset, &result) != 0) {
+	if (dict_insert(type_die_hash, &die_dict_key, &result) != 0) {
 		complain(parent, "Couldn't insert into cache dict");
 		CLEANUP_AND_RETURN_ERROR(NULL);
 	}
@@ -430,7 +455,7 @@ static struct arg_type_info *get_enum(Dwarf_Die *parent,
 // returns a newly-allocated art_type_info*, or NULL on error
 static struct arg_type_info *get_array(Dwarf_Die *parent,
 				       struct protolib *plib,
-				       struct dict *type_dieoffset_hash)
+				       struct dict *type_die_hash)
 {
 
 #define CLEANUP_AND_RETURN_ERROR(ret) do {				\
@@ -446,9 +471,9 @@ static struct arg_type_info *get_array(Dwarf_Die *parent,
 			type_destroy(result);				\
 			free(result);					\
 		}							\
-		dict_erase (type_dieoffset_hash, &die_offset,		\
+		dict_erase (type_die_hash, &die_dict_key,		\
 			    NULL, NULL, NULL);				\
-		dict_insert(type_dieoffset_hash, &die_offset,		\
+		dict_insert(type_die_hash, &die_dict_key,		\
 			    &(struct arg_type_info*){			\
 				    type_get_simple(ARGTYPE_VOID)});	\
 		return ret;						\
@@ -460,7 +485,7 @@ static struct arg_type_info *get_array(Dwarf_Die *parent,
 	struct arg_type_info *array_type = NULL;
 	int newly_allocated_array_type = 0;
 
-	Dwarf_Off die_offset = dwarf_dieoffset(parent);
+	struct dwarf_die_dict_key die_dict_key = dwarf_die_make_key(parent);
 
 	result = calloc(1, sizeof(struct arg_type_info));
 	if (result == NULL) {
@@ -474,12 +499,12 @@ static struct arg_type_info *get_array(Dwarf_Die *parent,
 		CLEANUP_AND_RETURN_ERROR(NULL);
 	}
 
-	if (dict_insert(type_dieoffset_hash, &die_offset, &result) != 0) {
+	if (dict_insert(type_die_hash, &die_dict_key, &result) != 0) {
 		complain(parent, "Couldn't insert into cache dict");
 		CLEANUP_AND_RETURN_ERROR(NULL);
 	}
 	array_type = get_type(&newly_allocated_array_type,
-			      &type_die, plib, type_dieoffset_hash);
+			      &type_die, plib, type_die_hash);
 	if (array_type == NULL) {
 		complain(parent, "Couldn't figure out array's type");
 		CLEANUP_AND_RETURN_ERROR(NULL);
@@ -553,7 +578,7 @@ static struct arg_type_info *get_array(Dwarf_Die *parent,
 // returns a newly-allocated art_type_info*, or NULL on error
 static struct arg_type_info *get_structure(Dwarf_Die *parent,
 					   struct protolib *plib,
-					   struct dict *type_dieoffset_hash)
+					   struct dict *type_die_hash)
 {
 
 #define CLEANUP_AND_RETURN_ERROR(ret) do {				\
@@ -565,9 +590,9 @@ static struct arg_type_info *get_structure(Dwarf_Die *parent,
 			type_destroy(result);				\
 			free(result);					\
 		}							\
-		dict_erase (type_dieoffset_hash, &die_offset,		\
+		dict_erase (type_die_hash, &die_dict_key,		\
 			    NULL, NULL, NULL);				\
-		dict_insert(type_dieoffset_hash, &die_offset,		\
+		dict_insert(type_die_hash, &die_dict_key,		\
 			    &(struct arg_type_info*){			\
 				    type_get_simple(ARGTYPE_VOID)});	\
 		return ret;						\
@@ -578,7 +603,7 @@ static struct arg_type_info *get_structure(Dwarf_Die *parent,
 	struct arg_type_info *member_type = NULL;
 	int newly_allocated_member_type = 0;
 
-	Dwarf_Off die_offset = dwarf_dieoffset(parent);
+	struct dwarf_die_dict_key die_dict_key = dwarf_die_make_key(parent);
 
 	result = calloc(1, sizeof(struct arg_type_info));
 	if (result == NULL) {
@@ -586,7 +611,7 @@ static struct arg_type_info *get_structure(Dwarf_Die *parent,
 		CLEANUP_AND_RETURN_ERROR(NULL);
 	}
 	type_init_struct(result);
-	if (dict_insert(type_dieoffset_hash, &die_offset, &result) != 0) {
+	if (dict_insert(type_die_hash, &die_dict_key, &result) != 0) {
 		complain(parent, "Couldn't insert into cache dict");
 		CLEANUP_AND_RETURN_ERROR(NULL);
 	}
@@ -615,7 +640,7 @@ static struct arg_type_info *get_structure(Dwarf_Die *parent,
 		}
 
 		member_type = get_type(&newly_allocated_member_type,
-				       &type_die, plib, type_dieoffset_hash);
+				       &type_die, plib, type_die_hash);
 		if (member_type == NULL) {
 			complain(&die, "Couldn't parse type from DWARF data");
 			CLEANUP_AND_RETURN_ERROR(NULL);
@@ -639,7 +664,7 @@ static struct arg_type_info *get_structure(Dwarf_Die *parent,
 static struct arg_type_info *get_type(int *newly_allocated_result,
 				      Dwarf_Die *type_die,
 				      struct protolib *plib,
-				      struct dict *type_dieoffset_hash)
+				      struct dict *type_die_hash)
 {
 
 #define CLEANUP_AND_RETURN_ERROR(ret) do {				\
@@ -651,18 +676,18 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			type_destroy(result);				\
 			free(result);					\
 		}							\
-		dict_erase (type_dieoffset_hash, &die_offset,		\
+		dict_erase (type_die_hash, &die_dict_key,		\
 			    NULL, NULL, NULL);				\
-		dict_insert(type_dieoffset_hash, &die_offset,		\
+		dict_insert(type_die_hash, &die_dict_key,		\
 			    &(struct arg_type_info*){			\
 				    type_get_simple(ARGTYPE_VOID)});	\
 		return ret;						\
 	} while (0)
 
-#define DICT_INSERT_AND_CHECK(type_dieoffset_hash, die_offset, result)	\
+#define DICT_INSERT_AND_CHECK(type_die_hash, die_dict_key, result)	\
 	do {								\
-		if (dict_insert(type_dieoffset_hash,			\
-				die_offset, result) != 0) {		\
+		if (dict_insert(type_die_hash,				\
+				die_dict_key, result) != 0) {		\
 			complain(type_die,				\
 				 "Couldn't insert into cache dict");	\
 			CLEANUP_AND_RETURN_ERROR(NULL);			\
@@ -673,15 +698,14 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	struct arg_type_info *pointee = NULL;
 	int newly_allocated_pointee = 0;
 
-	Dwarf_Off die_offset = dwarf_dieoffset(type_die);
-
+	struct dwarf_die_dict_key die_dict_key = dwarf_die_make_key(type_die);
 
 	// by default, we say we allocated nothing. I set this to true later,
 	// when I allocate memory
 	*newly_allocated_result = 0;
 
-	struct arg_type_info **found_type = dict_find(type_dieoffset_hash,
-						      &die_offset);
+	struct arg_type_info **found_type = dict_find(type_die_hash,
+						      &die_dict_key);
 	if (found_type != NULL) {
 		complain(type_die, "Read pre-computed type");
 		return *found_type;
@@ -708,7 +732,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	case DW_TAG_base_type:
 		complain(type_die, "Storing base type");
 		result = type_get_simple(get_base_type(type_die));
-		DICT_INSERT_AND_CHECK(type_dieoffset_hash, &die_offset, &result);
+		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
 
 	case DW_TAG_subroutine_type:
@@ -717,7 +741,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		// dereference these, it'll get a segfault
 		complain(type_die, "Storing subroutine type");
 		result = type_get_simple(ARGTYPE_VOID);
-		DICT_INSERT_AND_CHECK(type_dieoffset_hash, &die_offset, &result);
+		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
 
 	case DW_TAG_pointer_type:
@@ -726,7 +750,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			// void*
 			complain(type_die, "Storing void-pointer type");
 			result = type_get_voidptr();
-			DICT_INSERT_AND_CHECK(type_dieoffset_hash, &die_offset, &result);
+			DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 			return result;
 		}
 
@@ -748,11 +772,11 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 
 		/* Add it now so that recursive requests for this type
 		 * don't end up spinning endlessly.  */
-		DICT_INSERT_AND_CHECK(type_dieoffset_hash, &die_offset, &result);
+		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 
 		/* Now we can safely recurse.  */
 		pointee = get_type(&newly_allocated_pointee,
-				   &next_die, plib, type_dieoffset_hash);
+				   &next_die, plib, type_die_hash);
 		if (pointee == NULL)
 			CLEANUP_AND_RETURN_ERROR(NULL);
 
@@ -766,7 +790,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		complain(type_die, "Storing struct type");
 		*newly_allocated_result = 1;
 
-		result = get_structure(type_die, plib, type_dieoffset_hash);
+		result = get_structure(type_die, plib, type_die_hash);
 		if (result == NULL)
 			CLEANUP_AND_RETURN_ERROR(NULL);
 		return result;
@@ -782,7 +806,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			complain(type_die, "Storing const/typedef type");
 
 			result = get_type(newly_allocated_result, &next_die,
-					  plib, type_dieoffset_hash);
+					  plib, type_die_hash);
 			if (result == NULL)
 				CLEANUP_AND_RETURN_ERROR(NULL);
 		} else {
@@ -791,7 +815,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			result = type_get_simple(ARGTYPE_VOID);
 			complain(type_die, "Storing void type");
 		}
-		DICT_INSERT_AND_CHECK(type_dieoffset_hash, &die_offset, &result);
+		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
 
 	case DW_TAG_enumeration_type:
@@ -800,7 +824,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		*newly_allocated_result = 1;
 
 		complain(type_die, "Storing enum int");
-		result = get_enum(type_die, type_dieoffset_hash);
+		result = get_enum(type_die, type_die_hash);
 		if (result == NULL)
 			CLEANUP_AND_RETURN_ERROR(NULL);
 		return result;
@@ -809,7 +833,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		*newly_allocated_result = 1;
 
 		complain(type_die, "Storing array");
-		result = get_array(type_die, plib, type_dieoffset_hash);
+		result = get_array(type_die, plib, type_die_hash);
 		if (result == NULL)
 			CLEANUP_AND_RETURN_ERROR(NULL);
 		return result;
@@ -851,7 +875,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			/* Don't own element type, own length.  */
 			type_init_array(&result[0], &result[1], 0, len_expr, 1);
 		}
-		DICT_INSERT_AND_CHECK(type_dieoffset_hash, &die_offset, &result);
+		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
 	}
 
@@ -859,7 +883,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		complain(type_die, "Unknown type tag 0x%x. Returning void",
 			 dwarf_tag(type_die));
 		result = type_get_simple(ARGTYPE_VOID);
-		DICT_INSERT_AND_CHECK(type_dieoffset_hash, &die_offset, &result);
+		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
 	}
 
@@ -870,7 +894,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 // fills in *proto with a prototype. Returns true on success
 static bool get_prototype(struct prototype *result,
 			  Dwarf_Die *subroutine, struct protolib *plib,
-			  struct dict *type_dieoffset_hash)
+			  struct dict *type_die_hash)
 {
 
 #define CLEANUP_AND_RETURN_ERROR(ret) do {				\
@@ -899,7 +923,7 @@ static bool get_prototype(struct prototype *result,
 		int newly_allocated_return_type;
 		result->return_info = get_type(&newly_allocated_return_type,
 					       &return_type_die, plib,
-					       type_dieoffset_hash);
+					       type_die_hash);
 		if (result->return_info == NULL) {
 			complain(subroutine, "Couldn't get return type");
 			CLEANUP_AND_RETURN_ERROR(false);
@@ -933,7 +957,7 @@ static bool get_prototype(struct prototype *result,
 
 			argument_type = get_type(&newly_allocated_argument_type,
 						 &type_die, plib,
-						 type_dieoffset_hash);
+						 type_die_hash);
 			if (argument_type==NULL) {
 				complain(&arg_die, "Couldn't parse arg "
 					 "type from DWARF data");
@@ -994,7 +1018,7 @@ static bool any_filter_matches_function(const char *function_name,
 
 }
 static bool import_subprogram_name(struct protolib *plib, struct library *lib,
-				   struct dict *type_dieoffset_hash,
+				   struct dict *type_die_hash,
 				   Dwarf_Die *die, const char *function_name)
 {
 	if (!any_filter_matches_function( function_name, lib, die)) {
@@ -1014,7 +1038,7 @@ static bool import_subprogram_name(struct protolib *plib, struct library *lib,
 	}
 
 	struct prototype proto;
-	if (!get_prototype(&proto, die, plib, type_dieoffset_hash)) {
+	if (!get_prototype(&proto, die, plib, type_die_hash)) {
 		complain(die, "couldn't get prototype");
 		return false;
 	}
@@ -1030,7 +1054,7 @@ static bool import_subprogram_name(struct protolib *plib, struct library *lib,
 }
 
 static bool import_subprogram_die(struct protolib *plib, struct library *lib,
-				  struct dict *type_dieoffset_hash,
+				  struct dict *type_die_hash,
 				  Dwarf_Die *die)
 {
 	// If there is a linkage name, I use it (this is required for C++ code,
@@ -1045,13 +1069,13 @@ static bool import_subprogram_die(struct protolib *plib, struct library *lib,
 
 	if (dwarf_attr_integrate(die, DW_AT_linkage_name, &attr) != NULL &&
 	    (function_name = dwarf_formstring(&attr)) != NULL &&
-	    !import_subprogram_name(plib, lib, type_dieoffset_hash, die,
+	    !import_subprogram_name(plib, lib, type_die_hash, die,
 				    function_name)) {
 		return false;
 	}
 
 	if ((function_name = dwarf_diename(die)) != NULL &&
-	    !import_subprogram_name(plib, lib, type_dieoffset_hash, die,
+	    !import_subprogram_name(plib, lib, type_die_hash, die,
 				    function_name)) {
 		return false;
 	}
@@ -1060,7 +1084,7 @@ static bool import_subprogram_die(struct protolib *plib, struct library *lib,
 }
 
 static bool process_die_compileunit(struct protolib *plib, struct library *lib,
-				    struct dict *type_dieoffset_hash,
+				    struct dict *type_die_hash,
 				    Dwarf_Die *parent)
 {
 	complain(parent, "Processing compile unit");
@@ -1072,7 +1096,7 @@ static bool process_die_compileunit(struct protolib *plib, struct library *lib,
 
 	while (1) {
 		if (dwarf_tag(&die) == DW_TAG_subprogram)
-			if (!import_subprogram_die(plib, lib, type_dieoffset_hash,
+			if (!import_subprogram_die(plib, lib, type_die_hash,
 						   &die))
 				complain(&die, "Error importing subprogram. "
 					 "Skipping");
@@ -1086,12 +1110,12 @@ static bool process_die_compileunit(struct protolib *plib, struct library *lib,
 static void import(struct protolib *plib, struct library *lib,
 		   Dwfl_Module *dwfl_module)
 {
-	// A map from DIE addresses (Dwarf_Off) to type structures (struct
+	// A map from DIEs (identified by CU and DIE offset) to type structures (struct
 	// arg_type_info*). This is created and filled in at the start of each
 	// import, and deleted when the import is complete
-	struct dict type_dieoffset_hash;
+	struct dict type_die_hash;
 
-	dict_init(&type_dieoffset_hash, sizeof(Dwarf_Off),
+	dict_init(&type_die_hash, sizeof(struct dwarf_die_dict_key),
 		  sizeof(struct arg_type_info*),
 		  dwarf_die_hash, dwarf_die_eq, NULL);
 
@@ -1100,13 +1124,13 @@ static void import(struct protolib *plib, struct library *lib,
 	while ((die = dwfl_module_nextcu(dwfl_module, die, &bias)) != NULL) {
 		if (dwarf_tag(die) == DW_TAG_compile_unit)
 			process_die_compileunit(plib, lib,
-						&type_dieoffset_hash, die);
+						&type_die_hash, die);
 		else
 			complain(die, "A DW_TAG_compile_unit die expected. "
 				 "Skipping this one");
 	}
 
-	dict_destroy(&type_dieoffset_hash, NULL, NULL, NULL);
+	dict_destroy(&type_die_hash, NULL, NULL, NULL);
 }
 
 bool import_DWARF_prototypes(struct library *lib)
