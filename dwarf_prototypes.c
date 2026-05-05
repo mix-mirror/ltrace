@@ -775,6 +775,8 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	case DW_TAG_typedef:
 	case DW_TAG_const_type:
 	case DW_TAG_volatile_type:
+	case DW_TAG_restrict_type:
+	case DW_TAG_atomic_type:
 		// Various tags are simply pass-through, so I just keep going
 		if (get_type_die(&next_die, type_die)) {
 			complain(type_die, "Storing const/typedef type");
