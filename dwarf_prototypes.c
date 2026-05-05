@@ -134,7 +134,7 @@ static bool get_die_numeric(uint64_t *result,
 		bool flag;
 	} u;
 
-	if (dwarf_attr(die, attr_name, &attr) == NULL)
+	if (dwarf_attr_integrate(die, attr_name, &attr) == NULL)
 		return false;
 
 	unsigned int form = dwarf_whatform(&attr);
@@ -279,7 +279,7 @@ static bool get_type_die(Dwarf_Die *type_die, Dwarf_Die *die)
 {
 	Dwarf_Attribute attr;
 	return
-		dwarf_attr(die, DW_AT_type, &attr) != NULL &&
+		dwarf_attr_integrate(die, DW_AT_type, &attr) != NULL &&
 		dwarf_formref_die(&attr, type_die) != NULL;
 }
 
@@ -1043,7 +1043,7 @@ static bool import_subprogram_die(struct protolib *plib, struct library *lib,
 	const char *function_name;
 	Dwarf_Attribute attr;
 
-	if (dwarf_attr(die, DW_AT_linkage_name, &attr) != NULL &&
+	if (dwarf_attr_integrate(die, DW_AT_linkage_name, &attr) != NULL &&
 	    (function_name = dwarf_formstring(&attr)) != NULL &&
 	    !import_subprogram_name(plib, lib, type_dieoffset_hash, die,
 				    function_name)) {
