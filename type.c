@@ -483,14 +483,14 @@ type_alignof(struct process *proc, struct arg_type_info *type)
 	struct { char c; float f; } cf;
 	struct { char c; double d; } cd;
 
-	static size_t char_alignment = alignof(C, cC);
-	static size_t short_alignment = alignof(s, cs);
-	static size_t int_alignment = alignof(i, ci);
-	static size_t long_alignment = alignof(l, cl);
-	static size_t llong_alignment = alignof(ll, cll);
-	static size_t ptr_alignment = alignof(p, cp);
-	static size_t float_alignment = alignof(f, cf);
-	static size_t double_alignment = alignof(d, cd);
+	size_t char_alignment = alignof(C, cC);
+	size_t short_alignment = alignof(s, cs);
+	size_t int_alignment = alignof(i, ci);
+	size_t long_alignment = alignof(l, cl);
+	size_t llong_alignment = alignof(ll, cll);
+	size_t ptr_alignment = alignof(p, cp);
+	size_t float_alignment = alignof(f, cf);
+	size_t double_alignment = alignof(d, cd);
 
 	switch (type->type) {
 		size_t alignment;
