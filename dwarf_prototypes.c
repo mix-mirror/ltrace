@@ -155,6 +155,7 @@ static bool get_die_numeric(uint64_t *result,
 	case DW_FORM_data4:
 	case DW_FORM_data8:
 	case DW_FORM_udata:
+	case DW_FORM_implicit_const:
 		PROCESS_NUMERIC(udata);
 
 	case DW_FORM_sdata:
