@@ -186,7 +186,9 @@ value_reify(struct value *val, struct value_dict *arguments)
 		nloc = VAL_LOC_COPY;
 	}
 
-	if (val->u.inf_address >= preload_buf_start && val->u.inf_address + size <= preload_buf_end) {
+	if (val->u.inf_address >= preload_buf_start &&
+		val->u.inf_address <= preload_buf_end &&
+		(size_t)(preload_buf_end - val->u.inf_address) >= size) {
 		memcpy(data, preload_buf + (val->u.inf_address - preload_buf_start), size);
 		goto ok;
 	}
@@ -312,17 +314,17 @@ value_init_element(struct value *ret_val, struct value *val, size_t element)
 	switch (val->where) {
 	case VAL_LOC_COPY:
 	case VAL_LOC_SHARED:
-		ret_val->u.address = val->u.address + off;
+		ret_val->u.address = (arch_addr_t)((uintptr_t)val->u.address + off);
 		ret_val->where = VAL_LOC_SHARED;
 		return 0;
 
 	case VAL_LOC_WORD:
-		ret_val->u.address = value_get_raw_data(val) + off;
+		ret_val->u.address = (arch_addr_t)((uintptr_t)value_get_raw_data(val) + off);
 		ret_val->where = VAL_LOC_SHARED;
 		return 0;
 
 	case VAL_LOC_INFERIOR:
-		ret_val->u.inf_address = val->u.inf_address + off;
+		ret_val->u.inf_address = (arch_addr_t)((uintptr_t)val->u.inf_address + off);
 		ret_val->where = VAL_LOC_INFERIOR;
 		return 0;
 
