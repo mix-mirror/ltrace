@@ -1122,12 +1122,12 @@ static void import(struct protolib *plib, struct library *lib,
 	Dwarf_Addr bias;
 	Dwarf_Die *die = NULL;
 	while ((die = dwfl_module_nextcu(dwfl_module, die, &bias)) != NULL) {
-		if (dwarf_tag(die) == DW_TAG_compile_unit)
+		int die_tag = dwarf_tag(die);
+		if (die_tag == DW_TAG_compile_unit || die_tag == DW_TAG_partial_unit)
 			process_die_compileunit(plib, lib,
 						&type_die_hash, die);
 		else
-			complain(die, "A DW_TAG_compile_unit die expected. "
-				 "Skipping this one");
+			complain(die, "A DW_TAG_compile_unit or DW_TAG_partial_unit die expected, got %d - skipping this one", die_tag);
 	}
 
 	dict_destroy(&type_die_hash, NULL, NULL, NULL);
