@@ -220,6 +220,29 @@ lookup_prototype_alias_cb(const char *name, void *data)
 }
 
 static struct prototype *
+library_get_prototype_no_load_protolib(struct library *lib, const char *name)
+{
+	if (lib->protolib == NULL)
+		return NULL;
+
+	struct prototype *result =
+		protolib_lookup_prototype(lib->protolib, name,
+                                          lib->type != LT_LIBTYPE_SYSCALL);
+	if (result != NULL)
+		return result;
+
+	// prototype not found. Is it aliased?
+	struct lookup_prototype_alias_context context = {.lib = lib,
+	                                                 .result = NULL};
+	library_exported_names_each_alias(&lib->exported_names, name,
+					  NULL, lookup_prototype_alias_cb,
+					  &context);
+
+	// if found, the prototype is stored here, otherwise it's NULL
+	return context.result;
+}
+
+static struct prototype *
 library_get_prototype(struct library *lib, const char *name)
 {
 	if (lib->protolib == NULL) {
@@ -235,43 +258,27 @@ library_get_prototype(struct library *lib, const char *name)
 			 && lib->type == LT_LIBTYPE_DSO
 			 && snip_period(buf));
 
-#if defined(HAVE_LIBDW)
-		// DWARF data fills in the gaps in the .conf files, so I don't
-		// check for lib->protolib==NULL here
-		if (lib->dwfl_module != NULL &&
-		    (filter_matches_library(options.plt_filter,    lib ) ||
-		     filter_matches_library(options.static_filter, lib ) ||
-		     filter_matches_library(options.export_filter, lib )))
-			import_DWARF_prototypes(lib);
-		else
-			debug(DEBUG_FUNCTION,
-			      "Filter didn't match prototype '%s' in lib '%s'. "
-			      "Not importing",
-			      name, lib->soname);
-#endif
-
 		if (lib->protolib == NULL)
 			lib->protolib = protolib_cache_default(&g_protocache,
 							       buf, 0);
 	}
-	if (lib->protolib == NULL)
-		return NULL;
 
-	struct prototype *result =
-		protolib_lookup_prototype(lib->protolib, name,
-					  lib->type != LT_LIBTYPE_SYSCALL);
-	if (result != NULL)
-		return result;
+	struct prototype *result = library_get_prototype_no_load_protolib(lib, name);
 
-	// prototype not found. Is it aliased?
-	struct lookup_prototype_alias_context context = {.lib = lib,
-							 .result = NULL};
-	library_exported_names_each_alias(&lib->exported_names, name,
-					  NULL, lookup_prototype_alias_cb,
-					  &context);
+#if defined(HAVE_LIBDW)
+	/*
+	 * We parse the DWARF for a given module on-demand,
+	 * whenever a given function is not matched
+	 * in the protolib made from .conf/non-DWARF sources
+	 */
+	if (result == NULL && lib->dwfl_module != NULL && !lib->have_dwarf_prototypes_been_imported) {
+		import_DWARF_prototypes(lib);
+		lib->have_dwarf_prototypes_been_imported = true;
+		result = library_get_prototype_no_load_protolib(lib, name);
+	}
+#endif
 
-	// if found, the prototype is stored here, otherwise it's NULL
-	return context.result;
+	return result;
 }
 
 struct find_proto_data {

@@ -192,6 +192,7 @@ struct library {
 
 #if defined(HAVE_LIBDW)
 	Dwfl_Module *dwfl_module;
+	bool have_dwarf_prototypes_been_imported : 1;
 #endif
 };
 

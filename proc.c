@@ -978,6 +978,7 @@ proc_add_library(struct process *proc, struct library *lib)
 	}
 
 	lib->dwfl_module = dwfl_module;
+	lib->have_dwarf_prototypes_been_imported = false;
 	leader->dwfl = dwfl;
 
 #endif /* defined(HAVE_LIBDW) */

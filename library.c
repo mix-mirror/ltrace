@@ -304,6 +304,7 @@ private_library_init(struct library *lib, enum library_type type)
 
 #if defined(HAVE_LIBDW)
 	lib->dwfl_module = NULL;
+	lib->have_dwarf_prototypes_been_imported = false;
 #endif
 }
 
@@ -566,6 +567,7 @@ library_clone(struct library *retp, struct library *lib)
 	/* Wipe DWFL_MODULE, leave it to proc_add_library to
 	 * initialize.  */
 	retp->dwfl_module = NULL;
+	retp->have_dwarf_prototypes_been_imported = false;
 #endif
 
 	return 0;
