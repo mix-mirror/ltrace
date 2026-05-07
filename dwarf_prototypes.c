@@ -880,8 +880,19 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	}
 
 	default:
-		complain(type_die, "Unknown type tag 0x%x. Returning void",
-			 dwarf_tag(type_die));
+		/*
+		 * DW_TAG_unspecified_type indicates a
+		 * "construct in which a type may be left unspecified" or the
+		 * "absence of a type",
+		 * and in C this usually means void,
+		 * so the default handling is actually correct
+		 */
+		if (dwarf_tag(type_die) == DW_TAG_unspecified_type)
+			complain(type_die, "Storing unspecified type as void");
+		else
+			complain(type_die, "Unknown type tag 0x%x. Returning void",
+				 dwarf_tag(type_die));
+
 		result = type_get_simple(ARGTYPE_VOID);
 		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
