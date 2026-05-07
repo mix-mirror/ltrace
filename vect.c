@@ -143,8 +143,11 @@ vect_erase(struct vect *vec, size_t start, size_t end,
 	}
 
 	/* Now move the tail forward and adjust size.  */
-	memmove(slot(vec, start), slot(vec, end),
-		slot(vec, vec->size) - slot(vec, end));
+	if (vec->data != NULL)
+		memmove(slot(vec, start), slot(vec, end),
+			slot(vec, vec->size) - slot(vec, end));
+	else
+		assert(vect_size(vec) == 0 && start == 0 && end == 0);
 	vec->size -= end - start;
 }
 
