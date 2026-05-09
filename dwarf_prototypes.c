@@ -943,11 +943,31 @@ static bool get_prototype(struct prototype *result,
 	}
 
 
-	// Now look at the arguments
+	// Now look at the arguments, if there are any
 	Dwarf_Die arg_die;
-	if (dwarf_child(subroutine, &arg_die) != 0) {
-		// no args. We're done
-		return true;
+	Dwarf_Die current_followed_die = *subroutine;
+	int child_search_hops = 0;
+	while (dwarf_child(&current_followed_die, &arg_die) != 0) {
+		/*
+		 * No args on the initial die.
+		 * Try to find them by following any DW_AT_abstract_origin,
+		 * since some function DIEs are stuff like:
+		 *
+		 *  [   88a]    subprogram           abbrev: 48
+		 *              abstract_origin      (GNU_ref_alt) [   d12]
+		 *
+		 * (dwz-based DWARF does this extremely often)
+		 * which works fine for stuff that *isn't* children
+		 * (we use the proper function,
+		 * so it's obtained from the abstract origin in those cases),
+		 * but there's no dwarf_child_integrate,
+		 * so we have to follow it ourselves.
+		 */
+		Dwarf_Attribute attr;
+		if (++child_search_hops > 16 ||
+		    dwarf_attr_integrate(&current_followed_die, DW_AT_abstract_origin, &attr) == NULL ||
+		    dwarf_formref_die(&attr, &current_followed_die) == NULL)
+			return true;
 	}
 
 	while (1) {
