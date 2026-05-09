@@ -31,3 +31,7 @@
 #ifndef DEFAULT_ARRAYLEN
 #define DEFAULT_ARRAYLEN  4	/* default maximum # array elements */
 #endif				/* (-A switch) */
+
+#ifndef DEFAULT_MAX_DEPTH
+#define DEFAULT_MAX_DEPTH  2	/* default maximum struct pointer recursion depth */
+#endif				/* (-d switch) */

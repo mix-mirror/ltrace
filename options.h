@@ -43,6 +43,7 @@ struct options_t {
 	int summary;    /* count time, calls, and report a summary on program exit */
 	int debug;      /* debug */
 	size_t arraylen;   /* default maximum # of array elements printed */
+	size_t max_depth;  /* default maximum # of struct pointer recursion depth */
 	size_t strlen;     /* default maximum # of bytes printed in strings */
 	int follow;     /* trace child processes */
 	int no_signals; /* don't print signals */

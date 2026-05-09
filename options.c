@@ -44,19 +44,20 @@
 #include "demangle.h"
 
 struct options_t options = {
-	.align    = DEFAULT_ALIGN,    /* alignment column for results */
-	.user     = NULL,             /* username to run command as */
-	.syscalls = 0,                /* display syscalls */
+	.align    = DEFAULT_ALIGN,      /* alignment column for results */
+	.user     = NULL,               /* username to run command as */
+	.syscalls = 0,                  /* display syscalls */
 #ifdef USE_DEMANGLE
-	.demangle = 0,                /* Demangle low-level symbol names */
+	.demangle = 0,                  /* Demangle low-level symbol names */
 #endif
-	.indent = 0,                  /* indent output according to program flow */
-	.output = NULL,               /* output to a specific file */
-	.summary = 0,                 /* Report a summary on program exit */
-	.debug = 0,                   /* debug */
-	.arraylen = DEFAULT_ARRAYLEN, /* maximum # array elements to print */
-	.strlen = DEFAULT_STRLEN,     /* maximum # of bytes printed in strings */
-	.follow = 0,                  /* trace child processes */
+	.indent = 0,                    /* indent output according to program flow */
+	.output = NULL,                 /* output to a specific file */
+	.summary = 0,                   /* Report a summary on program exit */
+	.debug = 0,                     /* debug */
+	.arraylen = DEFAULT_ARRAYLEN,   /* maximum # array elements to print */
+	.max_depth = DEFAULT_MAX_DEPTH, /* maximum # struct pointer recursion depth */
+	.strlen = DEFAULT_STRLEN,       /* maximum # of bytes printed in strings */
+	.follow = 0,                    /* trace child processes */
 };
 
 static const char *progname;		/* Program name (`ltrace') */
@@ -89,6 +90,7 @@ usage(void) {
 # ifdef USE_DEMANGLE
 		"  -C, --demangle      decode low-level symbol names into user-level names.\n"
 # endif
+		"  -d, --max-depth     maximum depth of recursive struct pointer expansion.\n"
 		"  -D, --debug=MASK    enable debugging (see -Dh or --debug=help).\n"
 		"  -Dh, --debug=help   show help on debugging.\n"
 		"  -e FILTER           modify which library calls to trace.\n"
@@ -548,6 +550,7 @@ process_options(int argc, char **argv)
 			{"indent", 1, 0, 'n'},
 			{"help", 0, 0, 'h'},
 			{"library", 1, 0, 'l'},
+			{"max-depth", 1, 0, 'd'},
 			{"output", 1, 0, 'o'},
 			{"version", 0, 0, 'V'},
 			{"no-signals", 0, 0, 'b'},
@@ -565,7 +568,7 @@ process_options(int argc, char **argv)
 #if defined(HAVE_UNWINDER)
 			"w:"
 #endif
-			"cfhiLrStTVba:A:D:e:F:l:n:o:p:s:u:x:";
+			"cfhiLrStTVba:A:d:D:e:F:l:n:o:p:s:u:x:";
 
 #ifdef HAVE_GETOPT_LONG
 		c = getopt_long(argc, argv, opts, long_options, &option_index);
@@ -593,6 +596,9 @@ process_options(int argc, char **argv)
 			options.demangle++;
 			break;
 #endif
+		case 'd':
+			options.max_depth = parse_int(optarg, 'd', 0, 0);
+			break;
 		case 'D':
 			if (optarg[0]=='h') {
 				usage_debug();

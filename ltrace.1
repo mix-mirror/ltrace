@@ -40,7 +40,7 @@ ltrace \- A library call tracer
 .\" Output formatting:
 .\"
 [[\-F|\-\-config] \fIpathlist\fR]
-[\-A \fImaxelts\fR] [\-s \fIstrsize\fR] [\-C|\-\-demangle]
+[\-A \fImaxelts\fR] [\-s \fIstrsize\fR] [\-d|\-\-max\-depth \fImaxdepth\fR] [\-C|\-\-demangle]
 [\-a|\-\-align \fIcolumn\fR] [\-n|\-\-indent \fInr\fR]
 [\-o|\-\-output \fIfilename\fR]
 .\"
@@ -105,8 +105,7 @@ Align return values in a specific
 (default column is 5/8 of screen width).
 .IP "\-A \fImaxelts"
 Maximum number of array elements to print before suppressing the rest
-with an ellipsis ("...").  This also limits number of recursive
-structure expansions.
+with an ellipsis ("...").
 .IP "\-b, \-\-no-signals"
 Disable printing of signals received by the traced process.
 .IP \-c
@@ -116,6 +115,9 @@ program exit.
 Decode (demangle) low-level symbol names into user-level names.
 Besides removing any initial underscore prefix used by the system,
 this makes C++ function names readable.
+.IP "\-d, \-\-max\-depth \fImaxdepth"
+Maximum depth of recursive struct pointer expansion before
+suppressing the rest with an ellipsis ("...").
 .IP "\-D, \-\-debug \fRmask\fI"
 Show debugging output of \fBltrace\fR itself.  \fImask\fR is a number
 describing which debug messages should be displayed.  Use the option
