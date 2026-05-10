@@ -276,6 +276,8 @@ library_get_prototype(struct library *lib, const char *name)
 
 struct find_proto_data {
 	const char *name;
+	struct library *filtered_out_lib;
+	bool dont_search_non_exporting_libs;
 	struct prototype *ret;
 };
 
@@ -283,6 +285,12 @@ static enum callback_status
 find_proto_cb(struct process *proc, struct library *lib, void *d)
 {
 	struct find_proto_data *data = d;
+
+	if (data->filtered_out_lib == lib ||
+	    (data->dont_search_non_exporting_libs &&
+	     !library_exported_names_contains(&lib->exported_names, data->name)))
+		return CBS_CONT;
+
 	data->ret = library_get_prototype(lib, data->name);
 	return CBS_STOP_IF(data->ret != NULL);
 }
@@ -295,10 +303,19 @@ lookup_symbol_prototype(struct process *proc, struct library_symbol *libsym)
 
 	struct library *lib = libsym->lib;
 	if (lib != NULL) {
-		struct find_proto_data data = { libsym->name };
-		data.ret = library_get_prototype(lib, libsym->name);
-		if (data.ret == NULL
-		    && libsym->plt_type == LS_TOPLT_EXEC)
+		struct find_proto_data data = {
+			.name = libsym->name,
+			.filtered_out_lib = lib,
+			.dont_search_non_exporting_libs = true,
+			.ret = NULL
+		};
+
+		if (libsym->plt_type == LS_TOPLT_EXEC)
+			proc_each_library(proc, NULL, find_proto_cb, &data);
+		if (data.ret == NULL)
+		        data.ret = library_get_prototype(lib, libsym->name);
+		data.dont_search_non_exporting_libs = false;
+		if (data.ret == NULL && libsym->plt_type == LS_TOPLT_EXEC)
 			proc_each_library(proc, NULL, find_proto_cb, &data);
 		if (data.ret != NULL)
 			return data.ret;
