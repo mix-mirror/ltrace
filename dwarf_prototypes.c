@@ -1061,7 +1061,7 @@ static bool import_subprogram_name(struct protolib *plib, struct library *lib,
 		 dwarf_tag(die), function_name);
 
 	struct prototype *proto_already_there =
-		protolib_lookup_prototype(plib, function_name, false);
+		protolib_lookup_prototype(plib, function_name, true);
 
 	if (proto_already_there != NULL) {
 		complain(die, "Prototype already exists. Skipping");
