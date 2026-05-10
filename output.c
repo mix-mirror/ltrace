@@ -31,6 +31,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <ctype.h>
 #include <errno.h>
 #include <assert.h>
 #include <inttypes.h>
@@ -302,6 +303,104 @@ find_proto_cb(struct process *proc, struct library *lib, void *d)
 	return CBS_STOP_IF(data->ret != NULL);
 }
 
+// Search for name only, no extra processing whatsoever
+static struct prototype *
+lookup_symbol_prototype_by_name_only_exact_name(struct process *proc,
+				     struct library *libsym_lib, const char *name,
+				     bool is_plt_exec)
+{
+	struct find_proto_data data = {
+		.name = name,
+		.filtered_out_lib = libsym_lib,
+		.dont_search_non_exporting_libs = true,
+		.ret = NULL
+	};
+
+	if (is_plt_exec)
+		proc_each_library(proc, NULL, find_proto_cb, &data);
+	if (data.ret == NULL)
+		data.ret = library_get_prototype(libsym_lib, name);
+	data.dont_search_non_exporting_libs = false;
+	if (data.ret == NULL && is_plt_exec)
+		proc_each_library(proc, NULL, find_proto_cb, &data);
+	return data.ret;
+}
+
+/*
+ * GCC may generate partial functions - these have the same ABI
+ * (except for isra, which is explicitly filtered out),
+ * but have a different name, with suffixes like .[smth].N,
+ * where [smth] is something like
+ * part, constprop, isra, cold, localalias, lto_priv, etc.
+ * (note that there is no .N at the end for e.g. cold)
+ * This function searches for stuff shaped like such a suffix
+ * (i.e. it matches on `\.[a-z_]+(\.[0-9]+)?$`)
+ * and returns a pointer to it, if found, or NULL otherwise
+ */
+static const char *find_removeable_same_abi_gcc_suffix(const char *str)
+{
+	const char *const beginning = str;
+	const char *const end = str + strlen(str);
+
+	// go through digits backwards
+	const char *walker = end;
+	while (walker > beginning && isdigit(walker[-1]))
+		--walker;
+
+	if (walker != end) { // there were digits
+		if (walker == beginning || // nothing before digits
+		    walker[-1] != '.') // no dot before digits
+			return NULL;
+		--walker;
+	}
+
+	// go through letters backwards
+	const char *letters_end = walker;
+	while (walker > beginning && (islower(walker[-1]) || walker[-1] == '_'))
+		--walker;
+
+	if (walker == letters_end || // no letters
+	    walker == beginning || // nothing before letters
+	    walker[-1] != '.' || // no dot before letters
+	    ((letters_end - walker) == 4 && strncmp(walker, "isra", 4) == 0)) // isra does actually change the ABI
+		return NULL;
+
+	return walker - 1; // points at the leading dot
+}
+
+// Search for name or for name without any ending GCC suffixes
+// (there can be several of them in a row,
+// so we look through any arbitrary series of them)
+static struct prototype *
+lookup_symbol_prototype_by_name(struct process *proc,
+				struct library *libsym_lib, const char *name,
+				bool is_plt_exec)
+{
+	struct prototype *result = lookup_symbol_prototype_by_name_only_exact_name(proc, libsym_lib, name, is_plt_exec);
+	if (result != NULL)
+		return result;
+
+	const char *gcc_partial_suffix = find_removeable_same_abi_gcc_suffix(name);
+	if (gcc_partial_suffix == NULL)
+		return NULL;
+	char *name_without_suffix = strndup(name, gcc_partial_suffix - name);
+	if (name_without_suffix == NULL)
+		return NULL;
+
+	while (true) {
+		result = lookup_symbol_prototype_by_name_only_exact_name(proc, libsym_lib, name_without_suffix, is_plt_exec);
+		if (result != NULL)
+			break;
+		gcc_partial_suffix = find_removeable_same_abi_gcc_suffix(name_without_suffix);
+		if (gcc_partial_suffix == NULL)
+			break;
+		*(char *)gcc_partial_suffix = '\0'; // the cast is fine since we know we own this from name_without_suffix
+	}
+
+	free(name_without_suffix);
+	return result;
+}
+
 static struct prototype *
 lookup_symbol_prototype(struct process *proc, struct library_symbol *libsym)
 {
@@ -310,22 +409,14 @@ lookup_symbol_prototype(struct process *proc, struct library_symbol *libsym)
 
 	struct library *lib = libsym->lib;
 	if (lib != NULL) {
-		struct find_proto_data data = {
-			.name = libsym->name,
-			.filtered_out_lib = lib,
-			.dont_search_non_exporting_libs = true,
-			.ret = NULL
-		};
-
-		if (libsym->plt_type == LS_TOPLT_EXEC)
-			proc_each_library(proc, NULL, find_proto_cb, &data);
-		if (data.ret == NULL)
-		        data.ret = library_get_prototype(lib, libsym->name);
-		data.dont_search_non_exporting_libs = false;
-		if (data.ret == NULL && libsym->plt_type == LS_TOPLT_EXEC)
-			proc_each_library(proc, NULL, find_proto_cb, &data);
-		if (data.ret != NULL)
-			return data.ret;
+		struct prototype *result = lookup_symbol_prototype_by_name(proc, libsym->lib, libsym->name, libsym->plt_type == LS_TOPLT_EXEC);
+		if (result != NULL)
+			return result;
+		const char *dwarf_name = proc_addr_to_dwarf_symbol_name(proc, libsym->enter_addr, false);
+		if (dwarf_name != NULL && strcmp(libsym->name, dwarf_name) != 0)
+			result = lookup_symbol_prototype_by_name(proc, libsym->lib, dwarf_name, libsym->plt_type == LS_TOPLT_EXEC);
+		if (result != NULL)
+			return result;
 	}
 
 	return build_default_prototype();

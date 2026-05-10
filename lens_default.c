@@ -283,22 +283,10 @@ get_pointer_symbol_name(struct value *value, struct value_dict *arguments)
 #else
 	long long pointer_value;
 	if (value->inferior == NULL ||
-	    value->inferior->leader == NULL ||
-	    value->inferior->leader->dwfl == NULL ||
 	    value_extract_word(value, &pointer_value, arguments) != 0)
 		return NULL;
 
-	Dwfl_Module *module = dwfl_addrmodule(value->inferior->leader->dwfl, pointer_value);
-	if (module == NULL)
-		return NULL;
-
-	GElf_Off offset = 1; // paranoia: initialized 1 just in case dwfl_module_addrinfo somehow didn't set the offset
-	GElf_Sym symbol;
-	const char *name = dwfl_module_addrinfo(module, pointer_value, &offset, &symbol, NULL, NULL, NULL);
-	if (name == NULL || offset != 0)
-		return NULL;
-
-	return name;
+	return proc_addr_to_dwarf_symbol_name(value->inferior, (arch_addr_t)pointer_value, true);
 #endif
 }
 

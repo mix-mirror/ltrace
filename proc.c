@@ -1149,6 +1149,30 @@ proc_find_symbol(struct process *proc, struct library_symbol *sym,
 	return 0;
 }
 
+const char *proc_addr_to_dwarf_symbol_name(struct process *proc,
+					   arch_addr_t address,
+					   bool exact_match)
+{
+#if !defined(HAVE_LIBDW)
+	return NULL;
+#else
+	if (proc->leader == NULL || proc->leader->dwfl == NULL)
+		return NULL;
+
+	Dwfl_Module *module = dwfl_addrmodule(proc->leader->dwfl, (Dwarf_Addr)address);
+	if (module == NULL)
+		return NULL;
+
+	GElf_Off offset = 1; // paranoia: initialized 1 just in case dwfl_module_addrinfo somehow didn't set the offset
+	GElf_Sym symbol;
+	const char *name = dwfl_module_addrinfo(module, (Dwarf_Addr)address, &offset, &symbol, NULL, NULL, NULL);
+	if (name == NULL || (exact_match && offset != 0))
+		return NULL;
+
+	return name;
+#endif
+}
+
 struct library_symbol *
 proc_each_symbol(struct process *proc, struct library_symbol *start_after,
 		 enum callback_status (*cb)(struct library_symbol *, void *),

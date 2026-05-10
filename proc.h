@@ -261,6 +261,15 @@ int proc_find_dynamic_entry_addr(struct process *proc, arch_addr_t src_addr,
 int proc_find_symbol(struct process *proc, struct library_symbol *sym,
 		     struct library **retlib, struct library_symbol **retsym);
 
+/* Finds what name DWARF thinks the given address corresponds to, if any
+   Returns NULL if none is found.
+   (this also happens if DWARF is not available, obviously.
+   If exact_match is true, then the offset of the found symbol must be 0 -
+   it can otherwise be anything. */
+const char *proc_addr_to_dwarf_symbol_name(struct process *proc,
+					   arch_addr_t address,
+					   bool exact_match);
+
 /* Iterate through all symbols in all libraries of PROC.  See
  * callback.h for notes on this interface.  */
 struct library_symbol *proc_each_symbol
