@@ -207,8 +207,10 @@ static bool get_integer_base_type(enum arg_type *type, int byte_size,
 
 // returns an ltrace ARGTYPE_XXX base type from the given die. If we dont
 // support a particular type (or an error occurred), I regturn ARGTYPE_VOID
-static enum arg_type get_base_type(Dwarf_Die *die)
+static enum arg_type get_base_type(Dwarf_Die *die, bool *is_boolean)
 {
+	*is_boolean = false;
+
 	uint64_t encoding;
 	if (!get_die_numeric(&encoding, die, DW_AT_encoding))
 		return ARGTYPE_VOID;
@@ -228,6 +230,7 @@ static enum arg_type get_base_type(Dwarf_Die *die)
 	    encoding == DW_ATE_boolean) {
 
 		bool is_signed = (encoding == DW_ATE_signed);
+		*is_boolean = (encoding == DW_ATE_boolean);
 
 		enum arg_type type;
 		if (!get_integer_base_type(&type, (int)byte_size, is_signed)) {
@@ -770,7 +773,22 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	switch (dwarf_tag(type_die)) {
 	case DW_TAG_base_type:
 		complain(type_die, "Storing base type");
-		result = type_get_simple(get_base_type(type_die));
+		bool is_boolean;
+		result = type_get_simple(get_base_type(type_die, &is_boolean));
+		if (is_boolean && result->lens == NULL) {
+			// Note that we can't just modify result directly at this point,
+			// since type_get_simple returns a pointer to a static variable,
+			// used for all types of the same width
+			struct arg_type_info *new_result = malloc(sizeof(*new_result));
+			if (new_result == NULL) {
+				complain(type_die, "alloc error");
+				CLEANUP_AND_RETURN_ERROR(NULL);
+			}
+			*new_result = *result;
+			*newly_allocated_result = 1;
+			result = new_result;
+			result->lens = &bool_lens;
+		}
 		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
 
