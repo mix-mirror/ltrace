@@ -38,6 +38,7 @@
 #include "lens_default.h"
 #include "options.h"
 #include "output.h"
+#include "proc.h"
 #include "type.h"
 #include "value.h"
 #include "zero.h"
@@ -274,6 +275,33 @@ format_struct(FILE *stream, struct value *value, struct value_dict *arguments)
 	return written;
 }
 
+static const char *
+get_pointer_symbol_name(struct value *value, struct value_dict *arguments)
+{
+#if !defined(HAVE_LIBDW)
+	return NULL;
+#else
+	long long pointer_value;
+	if (value->inferior == NULL ||
+	    value->inferior->leader == NULL ||
+	    value->inferior->leader->dwfl == NULL ||
+	    value_extract_word(value, &pointer_value, arguments) != 0)
+		return NULL;
+
+	Dwfl_Module *module = dwfl_addrmodule(value->inferior->leader->dwfl, pointer_value);
+	if (module == NULL)
+		return NULL;
+
+	GElf_Off offset = 1; // paranoia: initialized 1 just in case dwfl_module_addrinfo somehow didn't set the offset
+	GElf_Sym symbol;
+	const char *name = dwfl_module_addrinfo(module, pointer_value, &offset, &symbol, NULL, NULL, NULL);
+	if (name == NULL || offset != 0)
+	    return NULL;
+
+	return name;
+#endif
+}
+
 static const char null_message[] = "nil";
 int
 format_pointer(FILE *stream, struct value *value, struct value_dict *arguments)
@@ -326,6 +354,10 @@ format_pointer(FILE *stream, struct value *value, struct value_dict *arguments)
 			return fprintf(stream, "recurse%s", buf);
 		}
 	}
+
+	const char *name = get_pointer_symbol_name(value, arguments);
+	if (name != NULL && fprintf(stream, "&%s = ", name) < 0)
+		return -1;
 
 	/* OK, not a recursion.  Remember this value for tracking.  */
 	if (VECT_PUSHBACK(&pointers, &value) < 0)
@@ -447,11 +479,16 @@ toplevel_format_lens(struct lens *lens, FILE *stream,
 		return format_struct(stream, value, arguments);
 
 	case ARGTYPE_POINTER:
+	{
 		if (value_is_zero(value, arguments))
 			return fprintf(stream, null_message);
 		if (value->type->u.ptr_info.info->type != ARGTYPE_VOID)
 			return format_pointer(stream, value, arguments);
+		const char *symbol_name = get_pointer_symbol_name(value, arguments);
+		if (symbol_name != NULL)
+		    return fprintf(stream, "&%s", symbol_name);
 		return format_integer(stream, value, INT_FMT_x, arguments);
+	}
 
 	case ARGTYPE_ARRAY:
 		return format_array(stream, value, arguments,
