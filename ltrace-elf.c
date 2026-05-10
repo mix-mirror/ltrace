@@ -1204,6 +1204,7 @@ read_module(struct library *lib, struct process *proc,
 		 * arch_addr_t becomes integral type.  */
 		lte.entry_addr = (GElf_Addr)(uintptr_t)entry;
 		lte.bias = (GElf_Addr)(uintptr_t)entry - lte.ehdr.e_entry;
+		lte.base_addr = lte.bias;
 
 	} else {
 		GElf_Phdr phdr;
