@@ -872,7 +872,13 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			result = type_get_simple(ARGTYPE_VOID);
 			complain(type_die, "Storing void type");
 		}
-		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
+		// We may have already inserted this,
+		// through some kind of recursion like e.g.:
+		// typedef struct foo { foo *next; } foo;
+		// Don't try to insert if already inserted,
+		// to avoid imploding in that case
+		if (dict_find(type_die_hash, &die_dict_key) == NULL)
+			DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
 
 	case DW_TAG_enumeration_type:
