@@ -202,7 +202,7 @@ compile_libname(const char *expr, const char *a_lib, int lib_re_p,
 			= lib[0] == '/' ? FLM_PATHNAME : FLM_SONAME;
 
 		regex_t lib_re;
-		int status = (lib_re_p ? regcomp : globcomp)(&lib_re, lib, 0);
+		int status = (lib_re_p ? regcomp : globcomp)(&lib_re, lib, REG_NOSUB);
 		if (status != 0) {
 			char buf[100];
 			regerror(status, &lib_re, buf, sizeof buf);
@@ -239,7 +239,7 @@ add_filter_rule(struct filter *filt, const char *expr,
 		char sym[strlen(a_sym) + 3];
 		sprintf(sym, "^%s$", a_sym);
 		int status = (sym_re_p ? regcomp : globcomp)
-			(&symbol_re, sym, 0);
+			(&symbol_re, sym, REG_NOSUB);
 		if (status != 0) {
 			char buf[100];
 			regerror(status, &symbol_re, buf, sizeof buf);
