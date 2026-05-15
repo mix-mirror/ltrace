@@ -29,7 +29,12 @@
 #include "value.h"
 
 #define complain(die, format, ...)					\
-	debug(DEBUG_FUNCTION, "%s() die '%s' @ 0x%" PRIx64 ": " format, \
+	debug(DEBUG_EVENT, "%s() die '%s' @ 0x%" PRIx64 ": " format,	\
+	      __func__, dwarf_diename(die), dwarf_dieoffset(die),	\
+	      ##__VA_ARGS__)
+
+#define debug_function(die, format, ...)				\
+	debug(DEBUG_FUNCTION, "%s() die '%s' @ 0x%" PRIx64 ": " format,	\
 	      __func__, dwarf_diename(die), dwarf_dieoffset(die),	\
 	      ##__VA_ARGS__)
 
@@ -397,15 +402,15 @@ static struct arg_type_info *get_enum(Dwarf_Die *parent,
 
 
 	while (1) {
-		complain(&die, "enum element: 0x%02x/'%s'", dwarf_tag(&die),
-			 dwarf_diename(&die));
+		debug_function(&die, "enum element: 0x%02x/'%s'", dwarf_tag(&die),
+			       dwarf_diename(&die));
 
 		dupkey = NULL;
 		value = NULL;
 
 		if (dwarf_tag(&die) != DW_TAG_enumerator) {
 			complain(&die, "Enums can have ONLY DW_TAG_enumerator "
-				 "elements");
+				       "elements");
 			CLEANUP_AND_RETURN_ERROR(NULL);
 		}
 
@@ -629,7 +634,7 @@ static struct arg_type_info *get_structure(Dwarf_Die *parent,
 		member_type = NULL;
 		newly_allocated_member_type = 0;
 
-		complain(&die, "member: 0x%02x", dwarf_tag(&die));
+		debug_function(&die, "member: 0x%02x", dwarf_tag(&die));
 
 		if (dwarf_tag(&die) != DW_TAG_member) {
 			complain(&die, "Structure can have ONLY DW_TAG_member");
@@ -710,7 +715,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	struct arg_type_info **found_type = dict_find(type_die_hash,
 						      &die_dict_key);
 	if (found_type != NULL) {
-		complain(type_die, "Read pre-computed type");
+		debug_function(type_die, "Read pre-computed type");
 		return *found_type;
 	}
 
@@ -721,10 +726,10 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			protolib_lookup_type(plib, type_name, true);
 
 		if (already_defined_type != NULL) {
-			complain(type_die,
-				 "Type '%s' defined in a .conf file. "
-				 "Using that instead of DWARF",
-				 type_name);
+			debug_function(type_die,
+				       "Type '%s' defined in a .conf file. "
+				       "Using that instead of DWARF",
+				       type_name);
 			return already_defined_type->info;
 		}
 	}
@@ -761,7 +766,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		    dwarf_attr_integrate(type_die, DW_AT_declaration, &declaration_attribute) != NULL && // declaration attribute ?
 		    dwarf_formflag(&declaration_attribute, &declaration_flag_value) == 0 && // declaration attribute value ?
 		    declaration_flag_value) { // declaration attribute value == true ?
-			complain(type_die, "Incomplete type, storing as void");
+			debug_function(type_die, "Incomplete type, storing as void");
 			result = type_get_simple(ARGTYPE_VOID);
 			DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 			return result;
@@ -772,7 +777,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 
 	switch (dwarf_tag(type_die)) {
 	case DW_TAG_base_type:
-		complain(type_die, "Storing base type");
+		debug_function(type_die, "Storing base type");
 		bool is_boolean;
 		result = type_get_simple(get_base_type(type_die, &is_boolean));
 		if (is_boolean && result->lens == NULL) {
@@ -796,7 +801,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	case DW_TAG_inlined_subroutine:
 		// function pointers are stored as void*. If ltrace tries to
 		// dereference these, it'll get a segfault
-		complain(type_die, "Storing subroutine type");
+		debug_function(type_die, "Storing subroutine type");
 		result = type_get_simple(ARGTYPE_VOID);
 		DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 		return result;
@@ -805,13 +810,13 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		if (!get_type_die(&next_die, type_die)) {
 			// the pointed-to type isn't defined, so I report a
 			// void*
-			complain(type_die, "Storing void-pointer type");
+			debug_function(type_die, "Storing void-pointer type");
 			result = type_get_voidptr();
 			DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
 			return result;
 		}
 
-		complain(type_die, "Storing pointer type");
+		debug_function(type_die, "Storing pointer type");
 
 		*newly_allocated_result = 1;
 		result = calloc(1, sizeof(struct arg_type_info));
@@ -839,12 +844,12 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 
 		/* Update the stored type in-place.  */
 		type_init_pointer(result, pointee, newly_allocated_pointee);
-		complain(type_die, "Done storing pointer type.");
+		debug_function(type_die, "Done storing pointer type.");
 
 		return result;
 
 	case DW_TAG_structure_type:
-		complain(type_die, "Storing struct type");
+		debug_function(type_die, "Storing struct type");
 		*newly_allocated_result = 1;
 
 		result = get_structure(type_die, plib, type_die_hash);
@@ -860,7 +865,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	case DW_TAG_atomic_type:
 		// Various tags are simply pass-through, so I just keep going
 		if (get_type_die(&next_die, type_die)) {
-			complain(type_die, "Storing const/typedef type");
+			debug_function(type_die, "Storing const/typedef type");
 
 			result = get_type(newly_allocated_result, &next_die,
 					  plib, type_die_hash);
@@ -870,7 +875,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			// no type. Use 'void'. Normally I'd think this is
 			// bogus, but stdio typedefs something to void
 			result = type_get_simple(ARGTYPE_VOID);
-			complain(type_die, "Storing void type");
+			debug_function(type_die, "Storing void type");
 		}
 		// We may have already inserted this,
 		// through some kind of recursion like e.g.:
@@ -886,7 +891,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		// particular lens to handle the enum
 		*newly_allocated_result = 1;
 
-		complain(type_die, "Storing enum int");
+		debug_function(type_die, "Storing enum int");
 		result = get_enum(type_die, type_die_hash);
 		if (result == NULL)
 			CLEANUP_AND_RETURN_ERROR(NULL);
@@ -895,7 +900,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 	case DW_TAG_array_type:
 		*newly_allocated_result = 1;
 
-		complain(type_die, "Storing array");
+		debug_function(type_die, "Storing array");
 		result = get_array(type_die, plib, type_die_hash);
 		if (result == NULL)
 			CLEANUP_AND_RETURN_ERROR(NULL);
@@ -913,7 +918,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 			CLEANUP_AND_RETURN_ERROR(NULL);
 
 		} else {
-			complain(type_die, "Storing union as byte array");
+			debug_function(type_die, "Storing union as byte array");
 
 			*newly_allocated_result = 1;
 
@@ -951,7 +956,7 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		 * so the default handling is actually correct
 		 */
 		if (dwarf_tag(type_die) == DW_TAG_unspecified_type)
-			complain(type_die, "Storing unspecified type as void");
+			debug_function(type_die, "Storing unspecified type as void");
 		else
 			complain(type_die, "Unknown type tag 0x%x. Returning void",
 				 dwarf_tag(type_die));
@@ -1039,7 +1044,7 @@ static bool get_prototype(struct prototype *result,
 	while (1) {
 		if (dwarf_tag(&arg_die) == DW_TAG_formal_parameter) {
 
-			complain(&arg_die, "arg: 0x%02x", dwarf_tag(&arg_die));
+			debug_function(&arg_die, "arg: 0x%02x", dwarf_tag(&arg_die));
 
 			argument_type = NULL;
 			newly_allocated_argument_type = false;
@@ -1087,14 +1092,14 @@ static bool import_subprogram_name(struct protolib *plib, struct library *lib,
 				   struct dict *type_die_hash,
 				   Dwarf_Die *die, const char *function_name)
 {
-	complain(die, "subroutine_type: 0x%02x; function '%s'",
-		 dwarf_tag(die), function_name);
+	debug_function(die, "subroutine_type: 0x%02x; function '%s'",
+		       dwarf_tag(die), function_name);
 
 	struct prototype *proto_already_there =
 		protolib_lookup_prototype(plib, function_name, true);
 
 	if (proto_already_there != NULL) {
-		complain(die, "Prototype already exists. Skipping");
+		debug_function(die, "Prototype already exists. Skipping");
 		return true;
 	}
 
@@ -1169,7 +1174,7 @@ static bool process_die_compileunit(struct protolib *plib, struct library *lib,
 				    struct dict *type_die_hash,
 				    Dwarf_Die *parent)
 {
-	complain(parent, "Processing compile unit");
+	debug_function(parent, "Processing compile unit");
 	Dwarf_Die die;
 	if (dwarf_child(parent, &die) != 0) {
 		// no child nodes, so nothing to do
@@ -1181,7 +1186,7 @@ static bool process_die_compileunit(struct protolib *plib, struct library *lib,
 			if (!import_subprogram_die(plib, lib, type_die_hash,
 						   &die))
 				complain(&die, "Error importing subprogram. "
-					 "Skipping");
+					       "Skipping");
 
 		NEXT_SIBLING(&die);
 	}
