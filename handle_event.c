@@ -766,26 +766,33 @@ handle_breakpoint(Event *event)
 	continue_process(event->proc->pid);
 }
 
+static struct callstack_element *callstack_push_back(struct process *proc)
+{
+	if (proc->callstack_depth == proc->callstack_capacity) {
+		proc->callstack_capacity = proc->callstack_capacity < 16 ? 16 : (proc->callstack_capacity + (proc->callstack_capacity / 4));
+		proc->callstack = proc->callstack_capacity >= (SIZE_MAX / sizeof(*proc->callstack)) ? NULL :
+		    realloc(proc->callstack, sizeof(*proc->callstack) * proc->callstack_capacity);
+		if (proc->callstack == NULL) {
+			fprintf(stderr, "%s: Error: call nesting too deep - couldn't increase callstack capacity to %zu!\n", __func__, proc->callstack_capacity);
+			abort();
+		}
+	}
+
+	proc->callstack[proc->callstack_depth] = (struct callstack_element){};
+	return &proc->callstack[proc->callstack_depth++];
+}
+
 static void
 callstack_push_syscall(struct process *proc, int sysnum)
 {
-	struct callstack_element *elem;
-
 	debug(DEBUG_FUNCTION, "callstack_push_syscall(pid=%d, sysnum=%d)", proc->pid, sysnum);
-	/* FIXME: not good -- should use dynamic allocation. 19990703 mortene. */
-	if (proc->callstack_depth == MAX_CALLDEPTH - 1) {
-		fprintf(stderr, "%s: Error: call nesting too deep!\n", __func__);
-		abort();
-		return;
-	}
 
-	elem = &proc->callstack[proc->callstack_depth];
-	*elem = (struct callstack_element){};
+	struct callstack_element *elem = callstack_push_back(proc);
+
 	elem->is_syscall = 1;
 	elem->c_un.syscall = sysnum;
 	elem->return_addr = NULL;
 
-	proc->callstack_depth++;
 	if (opt_T || options.summary) {
 		struct timezone tz;
 		gettimeofday(&elem->enter_time, &tz);
@@ -795,19 +802,11 @@ callstack_push_syscall(struct process *proc, int sysnum)
 static void
 callstack_push_symfunc(struct process *proc, struct breakpoint *bp)
 {
-	struct callstack_element *elem;
-
 	debug(DEBUG_FUNCTION, "callstack_push_symfunc(pid=%d, symbol=%s)",
 	      proc->pid, bp->libsym->name);
-	/* FIXME: not good -- should use dynamic allocation. 19990703 mortene. */
-	if (proc->callstack_depth == MAX_CALLDEPTH - 1) {
-		fprintf(stderr, "%s: Error: call nesting too deep!\n", __func__);
-		abort();
-		return;
-	}
 
-	elem = &proc->callstack[proc->callstack_depth++];
-	*elem = (struct callstack_element){};
+	struct callstack_element *elem = callstack_push_back(proc);
+
 	elem->is_syscall = 0;
 	elem->c_un.libfunc = bp->libsym;
 

@@ -482,5 +482,7 @@ breakpoints_init(struct process *proc)
 	proc_add_library(proc, lib);
 
 	proc->callstack_depth = 0;
+	proc->callstack_capacity = 0;
+	proc->callstack = NULL;
 	return 0;
 }

@@ -429,7 +429,7 @@ output_line(struct process *proc, const char *fmt, ...)
 		return;
 
 	if (current_proc != NULL) {
-		if (current_proc->callstack[current_depth].return_addr)
+		if (current_proc->callstack[current_depth - 1].return_addr)
 			fprintf(options.output, " <unfinished ...>\n");
 		else
 			fprintf(options.output, " <no return ...>\n");

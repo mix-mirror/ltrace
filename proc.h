@@ -77,9 +77,6 @@ struct callstack_element {
 	struct output_state out;
 };
 
-/* XXX We should get rid of this.  */
-#define MAX_CALLDEPTH 64
-
 /* XXX We would rather have this all organized a little differently,
  * have struct process for the whole group and struct task (or struct
  * lwp, struct thread) for what's there for per-thread stuff.  But for
@@ -100,7 +97,8 @@ struct process {
 	int tracesysgood;         /* signal indicating a PTRACE_SYSCALL trap */
 
 	size_t callstack_depth;
-	struct callstack_element callstack[MAX_CALLDEPTH];
+	size_t callstack_capacity; /* note: no semantic meaning apart from being the malloc-ed size of callstack */
+	struct callstack_element *callstack;
 
 	/* Linked list of libraries in backwards order of mapping.
 	 * The last element is the executed binary itself.  */

@@ -187,6 +187,7 @@ process_bare_init(struct process *proc, const char *filename,
 static void
 process_bare_destroy(struct process *proc, int was_exec)
 {
+	free(proc->callstack);
 	dict_destroy(proc->breakpoints, NULL, NULL, NULL);
 	free(proc->breakpoints);
 	if (!was_exec) {
@@ -420,7 +421,12 @@ process_clone(struct process *retp, struct process *proc, pid_t pid)
 	/* XXX clearly the callstack handling should be moved to a
 	 * separate module and this whole business extracted to
 	 * callstack_clone, or callstack_element_clone.  */
-	memcpy(retp->callstack, proc->callstack, sizeof(retp->callstack));
+	retp->callstack = malloc(sizeof(*retp->callstack) * proc->callstack_depth);
+	if (proc->callstack_depth != 0 && retp->callstack == NULL)
+		goto fail2;
+	retp->callstack_capacity = proc->callstack_depth;
+	if (proc->callstack_depth != 0)
+		memcpy(retp->callstack, proc->callstack, sizeof(*proc->callstack) * proc->callstack_depth);
 	retp->callstack_depth = proc->callstack_depth;
 
 	size_t i;
