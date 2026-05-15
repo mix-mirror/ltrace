@@ -726,6 +726,45 @@ static struct arg_type_info *get_type(int *newly_allocated_result,
 		}
 	}
 
+	/*
+	 * DWARF can have incomplete types,
+	 * which would make the below code choke and error out.
+	 *
+	 * DWARF specifies that:
+	 *
+	 * > An incomplete structure, union or class type
+	 * > is represented by a structure, union or class entry
+	 * > that does not have a byte size attribute
+	 * > and that has a DW_AT_declaration attribute.
+	 * - 5.7.1. Structure, Union and Class Type Entries
+	 *
+	 * ...and incomplete types have basically no information,
+	 * unless they happen to also have a DW_AT_specification
+	 * pointing to somewhere useful.
+	 *
+	 * Handle these here instead as just void types -
+	 * that should give a good-enough result,
+	 * given these are typically wanted specifically for e.g. pointers
+	 */
+	{
+		Dwarf_Attribute declaration_attribute;
+		bool declaration_flag_value = false;
+		int tag = dwarf_tag(type_die);
+		if ((tag == DW_TAG_structure_type ||
+		     tag == DW_TAG_union_type ||
+		     tag == DW_TAG_class_type) &&
+		    !dwarf_hasattr_integrate(type_die, DW_AT_byte_size) && // no byte size attribute ?
+		    !dwarf_hasattr_integrate(type_die, DW_AT_specification) && // no actual specification ?
+		    dwarf_attr_integrate(type_die, DW_AT_declaration, &declaration_attribute) != NULL && // declaration attribute ?
+		    dwarf_formflag(&declaration_attribute, &declaration_flag_value) == 0 && // declaration attribute value ?
+		    declaration_flag_value) { // declaration attribute value == true ?
+			complain(type_die, "Incomplete type, storing as void");
+			result = type_get_simple(ARGTYPE_VOID);
+			DICT_INSERT_AND_CHECK(type_die_hash, &die_dict_key, &result);
+			return result;
+		}
+	}
+
 	Dwarf_Die next_die;
 
 	switch (dwarf_tag(type_die)) {
@@ -966,8 +1005,11 @@ static bool get_prototype(struct prototype *result,
 		Dwarf_Attribute attr;
 		if (++child_search_hops > 16 ||
 		    dwarf_attr_integrate(&current_followed_die, DW_AT_abstract_origin, &attr) == NULL ||
-		    dwarf_formref_die(&attr, &current_followed_die) == NULL)
+		    dwarf_formref_die(&attr, &current_followed_die) == NULL) {
+			if (child_search_hops > 16)
+				fprintf(stderr, "'%s': either this DWARF is INSANE or it's corrupt or there's a big big big bug in ltrace\n", dwarf_diename(subroutine));
 			return true;
+		}
 	}
 
 	while (1) {
