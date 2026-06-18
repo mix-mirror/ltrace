@@ -296,7 +296,7 @@ get_pointer_symbol_name(struct value *value, struct value_dict *arguments)
 	GElf_Sym symbol;
 	const char *name = dwfl_module_addrinfo(module, pointer_value, &offset, &symbol, NULL, NULL, NULL);
 	if (name == NULL || offset != 0)
-	    return NULL;
+		return NULL;
 
 	return name;
 #endif
@@ -486,7 +486,7 @@ toplevel_format_lens(struct lens *lens, FILE *stream,
 			return format_pointer(stream, value, arguments);
 		const char *symbol_name = get_pointer_symbol_name(value, arguments);
 		if (symbol_name != NULL)
-		    return fprintf(stream, "&%s", symbol_name);
+			return fprintf(stream, "&%s", symbol_name);
 		return format_integer(stream, value, INT_FMT_x, arguments);
 	}
 
