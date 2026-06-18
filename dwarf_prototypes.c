@@ -1007,7 +1007,7 @@ static bool get_prototype(struct prototype *result,
 		    dwarf_attr_integrate(&current_followed_die, DW_AT_abstract_origin, &attr) == NULL ||
 		    dwarf_formref_die(&attr, &current_followed_die) == NULL) {
 			if (child_search_hops > 16)
-				fprintf(stderr, "'%s': either this DWARF is INSANE or it's corrupt or there's a big big big bug in ltrace\n", dwarf_diename(subroutine));
+				fprintf(stderr, "'%s': corrupt DWARF data detected?\n", dwarf_diename(subroutine));
 			return true;
 		}
 	}
