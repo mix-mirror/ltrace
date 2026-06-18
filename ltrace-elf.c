@@ -867,8 +867,9 @@ populate_plt(struct process *proc, const char *filename,
 		}
 
 		char const *name = lte->dynstr + sym.st_name;
-		int matched = filter_matches_symbol(options.plt_filter,
-						    name, lib);
+		int matched = sym.st_name != 0 &&
+			      filter_matches_symbol(options.plt_filter, name,
+						    lib);
 
 		struct library_symbol *libsym = NULL;
 		if (elf_add_plt_entry(proc, lte, name, rela, i, &libsym) < 0)
