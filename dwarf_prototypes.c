@@ -1112,17 +1112,38 @@ static bool import_subprogram_die(struct protolib *plib, struct library *lib,
 				  struct dict *type_die_hash,
 				  Dwarf_Die *die)
 {
-	// If there is a linkage name, I use it (this is required for C++ code,
-	// in particular).
-	//
-	// I use the plain name regardless, since sometimes the exported symbol
-	// corresponds to the plain name, NOT the linkage name. For instance I
-	// see this on my Debian/sid amd64 box. In its libc, the linkage name of
-	// __nanosleep is __GI___nanosleep, but the export is __nanosleep
-	const char *function_name;
+	/*
+	 * If there is a linkage name, I use it (this is required for C++ code,
+	 * in particular).
+	 *
+	 * I use the plain name regardless, since sometimes the exported symbol
+	 * corresponds to the plain name, NOT the linkage name. For instance I
+	 * see this on my Debian/sid amd64 box. In its libc, the linkage name of
+	 * __nanosleep is __GI___nanosleep, but the export is __nanosleep
+	 *
+	 * Many programs have *weird* declarations for __builtin_ functions,
+	 * e.g.:
+	 *
+	 *  [ 6cfbc]    subprogram           abbrev: 67
+	 *              external             (flag_present) yes
+	 *              declaration          (flag_present) yes
+	 *              linkage_name         (strp) "__GI_mempcpy"
+	 *              name                 (strp) "__builtin_mempcpy"
+	 *              decl_file            (implicit_const) <built-in> (26)
+	 *              decl_line            (implicit_const) 0
+	 *
+	 * (yes, that's the whole thing,
+	 * and there's no parameters or return type)
+	 * ...so don't do this for those ones in particular
+	 */
+
+	const char *function_name = dwarf_diename(die);
+	bool is_builtin = function_name != NULL &&
+			  strncmp(function_name, "__builtin_", 10) == 0;
 	Dwarf_Attribute attr;
 
-	if (dwarf_attr_integrate(die, DW_AT_linkage_name, &attr) != NULL &&
+	if (!is_builtin &&
+	    dwarf_attr_integrate(die, DW_AT_linkage_name, &attr) != NULL &&
 	    (function_name = dwarf_formstring(&attr)) != NULL &&
 	    !import_subprogram_name(plib, lib, type_die_hash, die,
 				    function_name)) {
