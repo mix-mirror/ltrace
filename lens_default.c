@@ -64,7 +64,12 @@ READER(read_double, double)
 
 #ifndef PRIb64  // Underlying format supported by bookworm glibc, but macros not exposed until 2.38
 #ifndef __PRI64_PREFIX
+/* glibc exposes the 64-bit length modifier as __PRI64_PREFIX; musl as __PRI64 */
+#ifdef __PRI64
+#define __PRI64_PREFIX __PRI64
+#else
 #define __PRI64_PREFIX "ll"
+#endif
 #endif
 #define PRIb64 __PRI64_PREFIX "b"
 #endif
