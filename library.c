@@ -529,6 +529,9 @@ library_clone(struct library *retp, struct library *lib)
 	library_set_pathname(retp, pathname, 1);
 
 	retp->key = lib->key;
+	retp->base = lib->base;
+	retp->entry = lib->entry;
+	retp->dyn_addr = lib->dyn_addr;
 	retp->should_activate_latent = lib->should_activate_latent;
 
 	/* Clone symbols.  */
@@ -567,7 +570,7 @@ library_clone(struct library *retp, struct library *lib)
 	}
 
 #if defined(HAVE_LIBDW)
-	/* Wipe DWFL_MODULE, leave it to proc_add_library to
+	/* Wipe DWFL_MODULE, leave it to proc_report_library_to_dwfl to
 	 * initialize.  */
 	retp->dwfl_module = NULL;
 	retp->have_dwarf_prototypes_been_imported = false;

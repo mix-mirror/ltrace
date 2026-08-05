@@ -360,6 +360,83 @@ clone_single_bp(arch_addr_t *key, struct breakpoint **bpp, void *u)
 	return CBS_CONT;
 }
 
+#if defined(HAVE_LIBDW)
+
+static void
+proc_report_library_to_dwfl(struct process *proc, struct library *lib)
+{
+	Dwfl *dwfl = NULL;
+	Dwfl_Module *dwfl_module = NULL;
+
+	/* Setup module tracking for libdwfl unwinding.  */
+	struct process *leader = proc->leader;
+	dwfl = leader->dwfl;
+	if (dwfl == NULL) {
+		static const Dwfl_Callbacks proc_callbacks = {
+			.find_elf = dwfl_linux_proc_find_elf,
+			.find_debuginfo = dwfl_standard_find_debuginfo
+		};
+		dwfl = dwfl_begin(&proc_callbacks);
+		if (dwfl == NULL)
+			fprintf(stderr,
+				"Couldn't initialize libdwfl unwinding "
+				"for process %d: %s\n", leader->pid,
+				dwfl_errmsg (-1));
+	}
+
+	if (dwfl != NULL) {
+		dwfl_report_begin_add(dwfl);
+		dwfl_module =
+			dwfl_report_elf(dwfl, lib->soname,
+					lib->pathname, -1,
+					/* XXX double cast */
+					(GElf_Addr) (uintptr_t) lib->base,
+					false);
+		if (dwfl_module == NULL)
+			fprintf(stderr,
+				"dwfl_report_elf %s@%p (%s) %d: %s\n",
+				lib->soname, lib->base, lib->pathname,
+				proc->pid, dwfl_errmsg (-1));
+
+		dwfl_report_end(dwfl, NULL, NULL);
+
+		if (options.bt_depth > 0) {
+			if (proc->should_attach_dwfl) {
+				int r = dwfl_linux_proc_attach(dwfl,
+							       leader->pid,
+							       true);
+				proc->should_attach_dwfl = 0;
+				if (r != 0) {
+					const char *msg;
+					dwfl_end(dwfl);
+					dwfl = NULL;
+					if (r < 0)
+						msg = dwfl_errmsg(-1);
+					else
+						msg = strerror(r);
+					fprintf(stderr, "Couldn't initialize "
+						"libdwfl (unwinding, prototype "
+						"import) for process %d: %s\n",
+						leader->pid, msg);
+				}
+			}
+		}
+	}
+
+	lib->dwfl_module = dwfl_module;
+	lib->have_dwarf_prototypes_been_imported = false;
+	leader->dwfl = dwfl;
+}
+
+#else
+
+static void
+proc_report_library_to_dwfl(struct process *proc, struct library *lib)
+{
+}
+
+#endif
+
 int
 process_clone(struct process *retp, struct process *proc, pid_t pid)
 {
@@ -403,6 +480,7 @@ process_clone(struct process *retp, struct process *proc, pid_t pid)
 			goto fail1;
 		}
 
+		proc_report_library_to_dwfl(retp, *nlibp);
 		nlibp = &(*nlibp)->next;
 	}
 
@@ -925,69 +1003,7 @@ proc_add_library(struct process *proc, struct library *lib)
 	debug(DEBUG_PROCESS, "added library %s@%p (%s) to %d",
 	      lib->soname, lib->base, lib->pathname, proc->pid);
 
-#if defined(HAVE_LIBDW)
-	Dwfl *dwfl = NULL;
-	Dwfl_Module *dwfl_module = NULL;
-
-	/* Setup module tracking for libdwfl unwinding.  */
-	struct process *leader = proc->leader;
-	dwfl = leader->dwfl;
-	if (dwfl == NULL) {
-		static const Dwfl_Callbacks proc_callbacks = {
-			.find_elf = dwfl_linux_proc_find_elf,
-			.find_debuginfo = dwfl_standard_find_debuginfo
-		};
-		dwfl = dwfl_begin(&proc_callbacks);
-		if (dwfl == NULL)
-			fprintf(stderr,
-				"Couldn't initialize libdwfl unwinding "
-				"for process %d: %s\n", leader->pid,
-				dwfl_errmsg (-1));
-	}
-
-	if (dwfl != NULL) {
-		dwfl_report_begin_add(dwfl);
-		dwfl_module =
-			dwfl_report_elf(dwfl, lib->soname,
-					lib->pathname, -1,
-					/* XXX double cast */
-					(GElf_Addr) (uintptr_t) lib->base,
-					false);
-		if (dwfl_module == NULL)
-			fprintf(stderr,
-				"dwfl_report_elf %s@%p (%s) %d: %s\n",
-				lib->soname, lib->base, lib->pathname,
-				proc->pid, dwfl_errmsg (-1));
-
-		dwfl_report_end(dwfl, NULL, NULL);
-
-		if (options.bt_depth > 0) {
-			if (proc->should_attach_dwfl) {
-				int r = dwfl_linux_proc_attach(dwfl,
-							       leader->pid,
-							       true);
-				proc->should_attach_dwfl = 0;
-				if (r != 0) {
-					const char *msg;
-					dwfl_end(dwfl);
-					if (r < 0)
-						msg = dwfl_errmsg(-1);
-					else
-						msg = strerror(r);
-					fprintf(stderr, "Couldn't initialize "
-						"libdwfl (unwinding, prototype "
-						"import) for process %d: %s\n",
-						leader->pid, msg);
-				}
-			}
-		}
-	}
-
-	lib->dwfl_module = dwfl_module;
-	lib->have_dwarf_prototypes_been_imported = false;
-	leader->dwfl = dwfl;
-
-#endif /* defined(HAVE_LIBDW) */
+	proc_report_library_to_dwfl(proc, lib);
 
 	/* Insert breakpoints for all active (non-latent) symbols.  */
 	struct library_symbol *libsym = NULL;
