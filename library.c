@@ -513,17 +513,20 @@ library_clone(struct library *retp, struct library *lib)
 	const char *pathname;
 
 	/* Make lifetimes of strings stored at original independent of
-	 * those at the clone.  */
-	if (strdup_if(&soname, lib->soname, lib->own_soname) < 0
-	    || strdup_if(&pathname, lib->pathname, lib->own_pathname) < 0) {
-		if (lib->own_soname)
-			free((char *)soname);
+	 * those at the clone. If the original happens to be merely a non-owning
+	 * reference, we can't just keep it as-is either - for instance, if a
+	 * process forks, and the parent dies first, the reference will be to a
+	 * path owned by the parent process, which would thus destroy it long
+	 * before the child process ceases to have need of it. */
+	if (strdup_if(&soname, lib->soname, 1) < 0
+	    || strdup_if(&pathname, lib->pathname, 1) < 0) {
+		free((char *)soname);
 		return -1;
 	}
 
 	private_library_init(retp, lib->type);
-	library_set_soname(retp, soname, lib->own_soname);
-	library_set_pathname(retp, pathname, lib->own_pathname);
+	library_set_soname(retp, soname, 1);
+	library_set_pathname(retp, pathname, 1);
 
 	retp->key = lib->key;
 	retp->should_activate_latent = lib->should_activate_latent;
