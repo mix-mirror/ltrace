@@ -269,6 +269,9 @@ private_process_destroy(struct process *proc, int was_exec)
 
 		callstack_pop(proc);
 	}
+	free(proc->callstack);
+	proc->callstack_capacity = 0;
+	proc->callstack = NULL;
 
 	if (!was_exec)
 		free(proc->filename);
