@@ -636,8 +636,19 @@ static struct arg_type_info *get_structure(Dwarf_Die *parent,
 
 		debug_function(&die, "member: 0x%02x", dwarf_tag(&die));
 
-		if (dwarf_tag(&die) != DW_TAG_member) {
-			complain(&die, "Structure can have ONLY DW_TAG_member");
+		int die_tag = dwarf_tag(&die);
+
+		// Handle nameless nested definitions
+		if (die_tag == DW_TAG_structure_type ||
+		    die_tag == DW_TAG_union_type ||
+		    die_tag == DW_TAG_class_type ||
+		    die_tag == DW_TAG_enumeration_type) {
+			debug_function(&die, "Member is nested definition - skipping");
+			NEXT_SIBLING(&die);
+		}
+
+		if (die_tag != DW_TAG_member) {
+			complain(&die, "Structure can have only DW_TAG_member and nested definitions");
 			CLEANUP_AND_RETURN_ERROR(NULL);
 		}
 
