@@ -93,21 +93,27 @@ param_printf_init(struct value *cb_args, size_t nargs,
 		goto fail;
 	assert(self->array.type->type == ARGTYPE_ARRAY);
 
+	/* We want to print *all* arguments relevant to the format string, and
+	 * thus we need to have the full format string to inspect - and an
+	 * array's zero() is limited by -s and -A, which are for display limits.
+	 * We thus need to do this, which is somewhat hack-ish :| */
+	size_t length = zero_array_length_raw(&self->array, arguments, SIZE_MAX);
+	if (length == (size_t)-1) {
+		value_destroy(&self->array);
+		goto fail;
+	}
+
+	self->array.size = length * self->width; /* A bit rude, but oh well. */
+
 	self->format = (char *)value_get_data(&self->array, arguments);
 	if (self->format == NULL) {
 		value_destroy(&self->array);
 		goto fail;
 	}
 
-	size_t size = value_size(&self->array, arguments);
-	if (size == (size_t)-1) {
-		value_destroy(&self->array);
-		goto fail;
-	}
-
 	self->percent = 0;
 	self->ptr = self->format;
-	self->end = self->format + size;
+	self->end = self->format + self->array.size;
 	self->have_future_precision = false;
 	return self;
 }

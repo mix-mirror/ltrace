@@ -26,23 +26,14 @@
 #include "value.h"
 #include "expr.h"
 
-static int
-zero_callback_max(struct value *ret_value, struct value *lhs,
-		  struct value_dict *arguments,
-		  size_t max, void *data)
+size_t
+zero_array_length_raw(struct value *lhs, struct value_dict *arguments, size_t max)
 {
-	static size_t maxlen;
-	if(!maxlen) {
-		maxlen = options.strlen > options.arraylen ? options.strlen : options.arraylen;
-		if(maxlen != (size_t)-1)
-			++maxlen;
-	}
-	max = max < maxlen ? max : maxlen;
 	size_t i;
 	for (i = 0; i < max; ++i) {
 		struct value element;
 		if (value_init_element(&element, lhs, i) < 0)
-			return -1;
+			return (size_t)-1;
 
 		int zero = value_is_zero(&element, arguments);
 
@@ -51,6 +42,25 @@ zero_callback_max(struct value *ret_value, struct value *lhs,
 		if (zero)
 			break;
 	}
+	return i;
+}
+
+static int
+zero_callback_max(struct value *ret_value, struct value *lhs,
+		  struct value_dict *arguments,
+		  size_t max, void *data)
+{
+	static size_t maxlen;
+	if (!maxlen) {
+		maxlen = options.strlen > options.arraylen ? options.strlen : options.arraylen;
+		if(maxlen != (size_t)-1)
+			++maxlen;
+	}
+	max = max < maxlen ? max : maxlen;
+
+	size_t i = zero_array_length_raw(lhs, arguments, max);
+	if (i == (size_t)-1)
+	        return -1;
 
 	struct arg_type_info *long_type = type_get_simple(ARGTYPE_LONG);
 	value_init_detached(ret_value, NULL, long_type, 0);
