@@ -46,6 +46,8 @@ proc run_dwarf_test {ref_output ltrace_opts} {
 
 
 
+# note: the "\\(&[a-zA-Z0-9_]\\+ = \\)\\?" pattern repeatedly used here handles the case where a FILE call is to a symbol we can name (e.g. _IO_2_1_stdout_)
+
 set ltrace_opts_l {"-A5" "-l" "libdwarftest.so"}
 set ref_output_l [subst -nocommands -novariables {
 dwarf->linkedlisttest({ 5, nil }) * = <void>
@@ -65,7 +67,7 @@ libdwarftest.so->_Z3f557Colors5(RED5) * = RED5
 <... enum_cxx_test resumed> ) * = <void>
 dwarf->stringtest('t') * = 4
 dwarf->stringtest(nil) * = -1
-dwarf->FILEtest(0x[0-9a-z]*, 0x[0-9a-z]*) * = <void>
+dwarf->FILEtest(\\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*, \\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*) * = <void>
 dwarf->voidfunc() * = <void>
 } ]
 run_dwarf_test $ref_output_l $ltrace_opts_l
@@ -97,7 +99,7 @@ _Z3f557Colors5@libdwarftest.so(RED5) * = RED5
 <... enum_cxx_test resumed> ) * = <void>
 stringtest@libdwarftest.so('t') * = 4
 stringtest@libdwarftest.so(nil) * = -1
-FILEtest@libdwarftest.so(0x[0-9a-z]*, 0x[0-9a-z]*) * = <void>
+FILEtest@libdwarftest.so(\\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*, \\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*) * = <void>
 voidfunc@libdwarftest.so() * = <void>
 } ]
 run_dwarf_test $ref_output_x $ltrace_opts_x
@@ -116,7 +118,7 @@ run_dwarf_test $ref_output_e $ltrace_opts_e
 
 set ltrace_opts_e {"-l" "libc.so*"}
 set ref_output_e [subst -nocommands -novariables {
-libdwarftest.so->ftell(0x[0-9a-z]*) * = -1
+libdwarftest.so->ftell(\\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*) * = -1
 libdwarftest.so->strlen('t') * = 4
 dwarf->usleep(33) * = 0
 dwarf->nanosleep({ 0, 44 }, nil) * = 0
@@ -125,7 +127,7 @@ run_dwarf_test $ref_output_e $ltrace_opts_e
 
 set ltrace_opts_e {"-L" "-x" "@libc.so*-__nanosleep_nocancel@libc.so.6"}
 set ref_output_e [subst -nocommands -novariables {
-ftell@libc.so.6(0x[0-9a-z]*
+ftell@libc.so.6(\\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*
 strlen@libc.so.6('t') * = 4
 usleep@libc.so.6(33 <unfinished ...>
 nanosleep@libc.so.6({ 0, 33000 }, nil) * = 0
@@ -138,13 +140,13 @@ run_dwarf_test $ref_output_e $ltrace_opts_e
 # Make sure the DWARF filtering and the alias finding work well together
 set ltrace_opts_e {"-L" "-x" "ftell@libc.so*"}
 set ref_output_e [subst -nocommands -novariables {
-ftell@libc.so.6(0x[0-9a-z]*) * = -1
+ftell@libc.so.6(\\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*) * = -1
 } ]
 run_dwarf_test $ref_output_e $ltrace_opts_e
 
 set ltrace_opts_e {"-L" "-x" "*ftell@libc.so*"}
 set ref_output_e [subst -nocommands -novariables {
-ftell@libc.so.6(0x[0-9a-z]*) * = -1
+ftell@libc.so.6(\\(&[a-zA-Z0-9_]\\+ = \\)\\?0x[0-9a-z]*) * = -1
 } ]
 run_dwarf_test $ref_output_e $ltrace_opts_e
 
